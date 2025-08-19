@@ -100,3 +100,106 @@ Contributions are welcome! Please feel free to submit pull requests or open issu
 ## License
 
 This project is open source and available under the MIT License. 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+### Ingestion & Processing
+- **Upload Excel**: Input source (.xlsx/.xls/.csv) provided by user.
+- `core/excel_processor.ExcelProcessor`
+  - **Purpose**: Validate, load, and convert Excel sheets to analyzable text and summaries.
+  - **Functioning**: Uses pandas to read sheets, cleans empty rows/cols, extracts schema, dtypes, samples, and numeric stats.
+
+- **Text Chunking**
+  - **Purpose**: Split long text into manageable, retrievable units.
+  - **Functioning**: Creates overlapping chunks using `CHUNK_SIZE` (1000) and `CHUNK_OVERLAP` (200) to preserve context.
+
+### Indexing
+- `sentence-transformers/all-MiniLM-L6-v2` (Embedding Model)
+  - **Purpose**: Convert chunks and queries into 384-d semantic vectors.
+  - **Functioning**: Batch encodes text via `SentenceTransformer.encode`; device-aware (CPU/GPU/MPS).
+
+- **FAISS Vector DB**
+  - **Purpose**: Store vectors and enable fast similarity search.
+  - **Functioning**: Builds index (`IndexFlatIP` exact or `IndexIVFFlat` approximate). Uses inner product for cosine similarity.
+
+- **Chunk Metadata**
+  - **Purpose**: Track provenance and structure of chunks.
+  - **Functioning**: Stores `sheet_name`, `chunk_index`, `total_chunks`, `source`.
+
+- **Save/Load Index**
+  - **Purpose**: Persist and restore retrieval state.
+  - **Functioning**: Writes `.faiss` binary and `.json` metadata; can reload to avoid reprocessing.
+
+### Query & Retrieval
+- **Query Embedding**
+  - **Purpose**: Represent the user’s question as a vector in the same space as chunks.
+  - **Functioning**: Encoded by the same embedding model; ensures comparable similarity.
+
+- **Top-K Retrieval**
+  - **Purpose**: Find most relevant context for generation.
+  - **Functioning**: FAISS search returns top `K=TOP_K (5)` chunks with similarity scores.
+
+- **Retrieved Chunks + Scores**
+  - **Purpose**: Provide grounded context for the LLM.
+  - **Functioning**: Aggregates the best-matching chunk texts and their metadata for the prompt.
+
+### Prompting & Generation
+- `core/prompt_engineer.PromptEngineer`
+  - **Purpose**: Craft effective prompts for different analysis tasks.
+  - **Functioning**: Selects templates (summary/trends/etc.), inserts context, optimizes phrasing per model.
+
+- `core/model_manager.ModelManager`
+  - **Purpose**: Load/cache models and run inference.
+  - **Functioning**: Device selection, 4-bit quant (CUDA), tokenizer setup, embedding and text generation APIs.
+
+- `microsoft/DialoGPT-medium` (LLM)
+  - **Purpose**: Generate natural-language, context-aware analysis.
+  - **Functioning**: Receives enhanced prompt and produces the response; alternatives: small/large.
+
+- **Enhanced Prompt**
+  - **Purpose**: Combine system role, retrieved context, and user query.
+  - **Functioning**: Structured prompt guiding the LLM to produce grounded, actionable insights.
+
+- **RAG Response**
+  - **Purpose**: Final answer grounded in retrieved Excel content.
+  - **Functioning**: Returns generated text plus context used and lengths for traceability.
+
+- `utils/visualization.DataVisualizer`
+  - **Purpose**: Turn insights into charts (line/bar/scatter/heatmap/box).
+  - **Functioning**: Generates Matplotlib/Plotly figures and dashboards; can export images/HTML.
+
+### Configuration & Storage
+- `config/settings.py`
+  - **Purpose**: Central control of models, chunking, retrieval, and performance.
+  - **Functioning**: Sets `EMBEDDING_MODEL`, `LANGUAGE_MODEL`, `CHUNK_SIZE`, `TOP_K`, `INDEX_TYPE`, device flags, cache paths.
+
+- **Model Cache (`.cache/models`)**
+  - **Purpose**: Avoid re-downloading Hugging Face models.
+  - **Functioning**: Local storage used by `SentenceTransformer` and `transformers`.
+
+- **Artifacts**
+  - **Purpose**: Persisted outputs for reuse.
+  - **Functioning**: `.faiss` index + `metadata.json` for retrieval; exported figures for reporting.
+
+- **Files/Classes Involved**
+  - `core/excel_processor.py`, `core/rag_engine.py`, `core/model_manager.py`, `core/prompt_engineer.py`
+  - `utils/visualization.py`, `config/settings.py`
+
+- RAG flow summary:
+  - Excel → Text → Chunking → Embeddings → FAISS Index → Query Embedding → Top-K Context → Prompt Engineering → DialoGPT Response → Visualizations
