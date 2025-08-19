@@ -1,0 +1,43 @@
+graph TD
+  A["Upload Excel (.xlsx/.xls/.csv)"] --> B["ExcelProcessor<br/>validate/load sheets<br/>extract text + summaries"]
+  B --> C["Text Chunking<br/>size: CHUNK_SIZE (1000)<br/>overlap: CHUNK_OVERLAP (200)"]
+
+  subgraph "Indexing"
+    direction LR
+    C --> D["Embedding Model<br/>sentence-transformers/all-MiniLM-L6-v2<br/>384-d vectors"]
+    D --> E["FAISS Vector DB<br/>Index: Flat / IVFFlat<br/>Similarity: cosine (inner product)"]
+    C --> E_meta["Chunk Metadata<br/>sheet_name, chunk_index, total_chunks"]
+    E -- "persist" --> Store1["Save Index<br/>.faiss + metadata.json"]
+    D -- "cache" --> Cache["Model Cache<br/>./.cache/models"]
+  end
+
+  subgraph "Query & Retrieval"
+    direction LR
+    UQ["User Query"] --> QEmb["Query Embedding<br/>all-MiniLM-L6-v2"]
+    QEmb --> E
+    E --> Search["Top-K Retrieval<br/>K = TOP_K (5)"]
+    Search --> Ctx["Retrieved Chunks + Scores"]
+  end
+
+  subgraph "Prompting & Generation"
+    direction LR
+    Ctx --> PE["PromptEngineer<br/>templates + system prompt<br/>optimize per model"]
+    UQ --> PE
+    PE --> EP["Enhanced Prompt<br/>context + question"]
+    EP --> MM["ModelManager"]
+    MM --> LLM["LLM (Text Generation)<br/>microsoft/DialoGPT-medium"]
+    MM --> AltLLM["Alternative LLMs (optional)<br/>DialoGPT-small / DialoGPT-large"]
+    LLM --> Resp["RAG Response"]
+    Resp --> Viz["DataVisualizer<br/>line, bar, scatter, heatmap, box"]
+  end
+
+  subgraph "Configuration"
+    CFG["config/settings.py<br/>models, chunking, TOP_K<br/>INDEX_TYPE, paths, GPU"]
+  end
+
+  CFG -.-> C
+  CFG -.-> D
+  CFG -.-> E
+  CFG -.-> LLM
+
+  E -.-> Store2["Load Index<br/>restore .faiss + metadata.json"] 
